@@ -88,19 +88,89 @@ RedditのUltralightサブレディットから取得した投稿とコメント�
 
 from pydantic import BaseModel
 from typing import Optional
+from enum import Enum
+
+
+class ProductType(Enum):
+    # Tent & Tarp
+    TENT = "Tent"
+    TARP = "Tarp"
+    TENT_ACCESSORY = "Tent Accessory"
+
+    # Backpack
+    BACKPACK = "Backpack"
+    SACK_POUCH = "Sack / Waist Pouch"
+    BACKPACK_ACCESSORY = "Backpack Accessory"
+    TRAVEL_BAG = "Travel Bag / Tote"
+
+    # Sleeping Items
+    SLEEPING_BAG = "Sleeping Bag"
+    BIVY = "Bivy"
+    HAMMOCK = "Hammock"
+    MAT = "Sleeping Mat"
+    PILLOW = "Pillow"
+    GROUNDSHEET = "Groundsheet"
+    SLEEP_ACCESSORY = "Sleeping Accessory"
+
+    # Clothing
+    TOPS = "Tops"
+    TSHIRT = "T-shirt / Shirt"
+    SHELL = "Shell"
+    INSULATION = "Insulation"
+    BOTTOMS = "Bottoms"
+    PANTS = "Pants / Shorts"
+
+    # Wear Accessories
+    HEADGEAR = "Headgear"
+    EYEWEAR = "Eyewear"
+    NECKWEAR = "Neckwear"
+    GLOVES = "Gloves"
+    SOCKS = "Socks"
+    SHOES = "Shoes"
+
+    # Bikepacking
+    BIKE_BAG = "Bike Bag"
+    BIKE_ACCESSORY = "Bike Accessory"
+
+    # Cooker & Accessories
+    COOKER = "Cooker"
+    CUTLERY = "Cutlery"
+    TABLE = "Table"
+    STOVE = "Stove / Fuel"
+    FIRE = "Firepit"
+    BOTTLE_PURIFIER = "Bottle / Water Purifier"
+
+    # Field Gear
+    STUFF_SACK = "Stuff Sack"
+    FIELD_ACCESSORY = "Field Accessory"
+    KNIFE_TOOL = "Knife"
+    WALLET = "Wallet"
+    UMBRELLA = "Umbrella"
+    CRAMPONS = "Crampons"
+    EMERGENCY = "Emergency"
+    LANTERN_HEADLIGHT = "Lantern / Headlight"
+
+    # Food & Alcohol
+    FOOD = "Food"
+    ALCOHOL = "Alcohol"
+
+    # Other
+    OTHER = "Other"
 
 
 class Tool(BaseModel):
     """
-    道具・ギアの情報を表すモデル。
+    Model representing tool/gear information.
 
     Attributes:
-        brand (Optional[str]): ブランド名。
-        name (str): 道具名（製品名）。
+        brand (Optional[str]): Brand name.
+        name (str): Tool/product name.
+        type (Optional[ProductType]): Product category/type.
     """
 
     brand: Optional[str]
     name: str
+    type: Optional[ProductType] = None
 
 
 class ToolList(BaseModel):
@@ -129,13 +199,14 @@ def extract_tools_with_llm(client, post):
     prompt = f"""
 RedditのUltralightサブレディットから取得した投稿とコメントのデータです。
 この投稿とコメントに登場する「道具・ギア」をリストアップしてください。
-それぞれ「ブランド名」と「道具名（製品名）」の2つの情報を抽出し、以下のJSON形式で返してください。
-ブランド名が不明な場合はnull、または空文字列でも構いません。
+それぞれ「ブランド名」「道具名（製品名）」「type（カテゴリ）」の3つの情報を抽出し、以下のJSON形式で返してください。
+- ブランド名が不明な場合はnull、または空文字列でも構いません。
+- typeは英語でカテゴリ名（例: "Tent", "Cooker" など）。わからない場合はnullや空文字列でも構いません。
 
 出力例:
 [
-  {{"brand": "Montbell", "name": "U.L.ドームシェルター"}},
-  {{"brand": null, "name": "チタンマグカップ"}}
+  {{"brand": "Montbell", "name": "U.L.ドームシェルター", "type": "Tent"}},
+  {{"brand": null, "name": "チタンマグカップ", "type": "Cooker"}}
 ]
 
 タイトル: {post['title']}
@@ -185,6 +256,24 @@ def summarize_posts_with_llm(posts):
 if __name__ == "__main__":
     import json
 
+    posts = fetch_reddit_posts("Ultralight", limit=2, comment_limit=5)
+    summaries = summarize_posts_with_llm(posts)
+    for item in summaries:
+        tools_list = []
+        for tool in item["tools"]:
+            d = tool.model_dump() if hasattr(tool, "model_dump") else dict(tool)
+            if isinstance(d.get("type"), ProductType):
+                d["type"] = d["type"].value
+            tools_list.append(d)
+        item["tools"] = tools_list
+me == "master":
+            return "main"
+        else:
+            return "other"
+
+    branch_name = get_current_branch()
+    branch_type = get_branch_type(branch_name)
+
     posts = fetch_reddit_posts("Ultralight", limit=10, comment_limit=10)
     summaries = summarize_posts_with_llm(posts)
     # Toolはpydanticモデルなのでdict化
@@ -193,6 +282,8 @@ if __name__ == "__main__":
             tool.model_dump() if hasattr(tool, "model_dump") else dict(tool)
             for tool in item["tools"]
         ]
+        item["branch_name"] = branch_name
+        item["branch_type"] = branch_type
     logger.info(
         "Summary output: %s", json.dumps(summaries, ensure_ascii=False, indent=2)
     )
