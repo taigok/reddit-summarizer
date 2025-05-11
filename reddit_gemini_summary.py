@@ -28,11 +28,11 @@ def fetch_reddit_posts(subreddit_name, limit=5, comment_limit=10):
         user_agent=REDDIT_USER_AGENT,
     )
     subreddit = reddit.subreddit(subreddit_name)
-    posts = []
+    post_list = []
     for submission in subreddit.hot(limit=limit):
         submission.comments.replace_more(limit=0)
         comments = [comment.body for comment in submission.comments[:comment_limit]]
-        posts.append(
+        post_list.append(
             {
                 "title": submission.title,
                 "selftext": submission.selftext,
@@ -40,7 +40,7 @@ def fetch_reddit_posts(subreddit_name, limit=5, comment_limit=10):
                 "url": f"https://www.reddit.com{submission.permalink}",
             }
         )
-    return posts
+    return post_list
 
 
 def summarize_post_with_llm(client, post):
