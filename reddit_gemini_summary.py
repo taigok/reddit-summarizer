@@ -266,24 +266,6 @@ if __name__ == "__main__":
                 d["type"] = d["type"].value
             tools_list.append(d)
         item["tools"] = tools_list
-me == "master":
-            return "main"
-        else:
-            return "other"
-
-    branch_name = get_current_branch()
-    branch_type = get_branch_type(branch_name)
-
-    posts = fetch_reddit_posts("Ultralight", limit=10, comment_limit=10)
-    summaries = summarize_posts_with_llm(posts)
-    # Toolはpydanticモデルなのでdict化
-    for item in summaries:
-        item["tools"] = [
-            tool.model_dump() if hasattr(tool, "model_dump") else dict(tool)
-            for tool in item["tools"]
-        ]
-        item["branch_name"] = branch_name
-        item["branch_type"] = branch_type
     logger.info(
         "Summary output: %s", json.dumps(summaries, ensure_ascii=False, indent=2)
     )
