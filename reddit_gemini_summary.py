@@ -27,7 +27,12 @@ def fetch_reddit_posts(subreddit_name, limit=5, comment_limit=10):
     Returns:
         list: 投稿データのリスト。
     """
-    logger.info("Fetching posts from subreddit: %s (limit=%d, comment_limit=%d)", subreddit_name, limit, comment_limit)
+    logger.info(
+        "Fetching posts from subreddit: %s (limit=%d, comment_limit=%d)",
+        subreddit_name,
+        limit,
+        comment_limit,
+    )
     reddit = praw.Reddit(
         client_id=REDDIT_CLIENT_ID,
         client_secret=REDDIT_CLIENT_SECRET,
@@ -61,7 +66,7 @@ def summarize_post_with_llm(client, post):
     Returns:
         str: 要約文。
     """
-    logger.info("Summarizing post: %s", post['title'])
+    logger.info("Summarizing post: %s", post["title"])
     prompt = f"""
 RedditのUltralightサブレディットから取得した投稿とコメントのデータです。
 この投稿とコメントについて、投稿・コメント全体の要約を300字程度で作成してください。
@@ -77,7 +82,7 @@ RedditのUltralightサブレディットから取得した投稿とコメント�
         model="gemini-2.0-flash", contents=[prompt]
     )
     summary = response.text.strip()
-    logger.info("Summary generated for: %s", post['title'])
+    logger.info("Summary generated for: %s", post["title"])
     return summary
 
 
@@ -120,7 +125,7 @@ def extract_tools_with_llm(client, post):
     Returns:
         list: 道具・ギアのリスト。
     """
-    logger.info("Extracting tools from post: %s", post['title'])
+    logger.info("Extracting tools from post: %s", post["title"])
     prompt = f"""
 RedditのUltralightサブレディットから取得した投稿とコメントのデータです。
 この投稿とコメントに登場する「道具・ギア」をリストアップしてください。
@@ -149,10 +154,10 @@ RedditのUltralightサブレディットから取得した投稿とコメント�
     # response.textはJSON文字列、response.parsedはpydanticモデル
     try:
         tools = response.parsed.tools
-        logger.info("Extracted %d tools from: %s", len(tools), post['title'])
+        logger.info("Extracted %d tools from: %s", len(tools), post["title"])
     except Exception:
         tools = []
-        logger.warning("Failed to extract tools from: %s", post['title'])
+        logger.warning("Failed to extract tools from: %s", post["title"])
     return tools
 
 
@@ -180,7 +185,7 @@ def summarize_posts_with_llm(posts):
 if __name__ == "__main__":
     import json
 
-    posts = fetch_reddit_posts("Ultralight", limit=3, comment_limit=5)
+    posts = fetch_reddit_posts("Ultralight", limit=10, comment_limit=10)
     summaries = summarize_posts_with_llm(posts)
     # Toolはpydanticモデルなのでdict化
     for item in summaries:
@@ -188,4 +193,6 @@ if __name__ == "__main__":
             tool.model_dump() if hasattr(tool, "model_dump") else dict(tool)
             for tool in item["tools"]
         ]
-    logger.info("Summary output: %s", json.dumps(summaries, ensure_ascii=False, indent=2))
+    logger.info(
+        "Summary output: %s", json.dumps(summaries, ensure_ascii=False, indent=2)
+    )
