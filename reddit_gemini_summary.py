@@ -2,6 +2,11 @@ import os
 import praw
 from google import genai
 from env_loader import load_env
+from logging_config import setup_logging
+import logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 load_env()
 
@@ -22,6 +27,7 @@ def fetch_reddit_posts(subreddit_name, limit=5, comment_limit=10):
     Returns:
         list: 投稿データのリスト。
     """
+    logger.info("Fetching posts from subreddit: %s (limit=%d, comment_limit=%d)", subreddit_name, limit, comment_limit)
     reddit = praw.Reddit(
         client_id=REDDIT_CLIENT_ID,
         client_secret=REDDIT_CLIENT_SECRET,
@@ -40,6 +46,7 @@ def fetch_reddit_posts(subreddit_name, limit=5, comment_limit=10):
                 "url": f"https://www.reddit.com{submission.permalink}",
             }
         )
+    logger.info("Fetched %d posts from subreddit: %s", len(post_list), subreddit_name)
     return post_list
 
 
@@ -54,6 +61,7 @@ def summarize_post_with_llm(client, post):
     Returns:
         str: 要約文。
     """
+    logger.info("Summarizing post: %s", post['title'])
     prompt = f"""
 RedditのUltralightサブレディットから取得した投稿とコメントのデータです。
 この投稿とコメントについて、投稿・コメント全体の要約を300字程度で作成してください。
@@ -68,7 +76,9 @@ RedditのUltralightサブレディットから取得した投稿とコメント�
     response = client.models.generate_content(
         model="gemini-2.0-flash", contents=[prompt]
     )
-    return response.text.strip()
+    summary = response.text.strip()
+    logger.info("Summary generated for: %s", post['title'])
+    return summary
 
 
 from pydantic import BaseModel
@@ -110,6 +120,7 @@ def extract_tools_with_llm(client, post):
     Returns:
         list: 道具・ギアのリスト。
     """
+    logger.info("Extracting tools from post: %s", post['title'])
     prompt = f"""
 RedditのUltralightサブレディットから取得した投稿とコメントのデータです。
 この投稿とコメントに登場する「道具・ギア」をリストアップしてください。
@@ -138,8 +149,10 @@ RedditのUltralightサブレディットから取得した投稿とコメント�
     # response.textはJSON文字列、response.parsedはpydanticモデル
     try:
         tools = response.parsed.tools
+        logger.info("Extracted %d tools from: %s", len(tools), post['title'])
     except Exception:
         tools = []
+        logger.warning("Failed to extract tools from: %s", post['title'])
     return tools
 
 
@@ -153,12 +166,14 @@ def summarize_posts_with_llm(posts):
     Returns:
         list: 各投稿のタイトル、要約、道具リストを含むリスト。
     """
+    logger.info("Summarizing %d posts with LLM...", len(posts))
     client = genai.Client()
     results = []
     for post in posts:
         summary = summarize_post_with_llm(client, post)
         tools = extract_tools_with_llm(client, post)
         results.append({"title": post["title"], "summary": summary, "tools": tools})
+    logger.info("All posts summarized.")
     return results
 
 
@@ -173,4 +188,4 @@ if __name__ == "__main__":
             tool.model_dump() if hasattr(tool, "model_dump") else dict(tool)
             for tool in item["tools"]
         ]
-    print(json.dumps(summaries, ensure_ascii=False, indent=2))
+    logger.info("Summary output: %s", json.dumps(summaries, ensure_ascii=False, indent=2))
