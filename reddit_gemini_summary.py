@@ -170,7 +170,7 @@ if __name__ == "__main__":
     # Toolはpydanticモデルなのでdict化
     for item in summaries:
         item["tools"] = [
-            tool.dict() if hasattr(tool, "dict") else dict(tool)
+            tool.model_dump() if hasattr(tool, "model_dump") else dict(tool)
             for tool in item["tools"]
         ]
     print(json.dumps(summaries, ensure_ascii=False, indent=2))
