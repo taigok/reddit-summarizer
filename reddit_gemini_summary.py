@@ -43,12 +43,12 @@ def fetch_reddit_posts(subreddit_name, limit=5, comment_limit=10):
     return posts
 
 
-def summarize_post_with_gemini(client, post):
+def summarize_post_with_llm(client, post):
     """
-    Gemini APIを用いて投稿・コメント全体の要約を生成します。
+    LLM（大規模言語モデル）APIを用いて投稿・コメント全体の要約を生成します。
 
     Args:
-        client: Gemini APIクライアント。
+        client: LLM APIクライアント。
         post (dict): 投稿データ。
 
     Returns:
@@ -99,12 +99,12 @@ class ToolList(BaseModel):
     tools: list[Tool]
 
 
-def extract_tools_with_gemini(client, post):
+def extract_tools_with_llm(client, post):
     """
-    Gemini APIを用いて投稿・コメントから道具・ギアを抽出します。
+    LLM（大規模言語モデル）APIを用いて投稿・コメントから道具・ギアを抽出します。
 
     Args:
-        client: Gemini APIクライアント。
+        client: LLM APIクライアント。
         post (dict): 投稿データ。
 
     Returns:
@@ -143,9 +143,9 @@ RedditのUltralightサブレディットから取得した投稿とコメント�
     return tools
 
 
-def summarize_with_gemini(posts):
+def summarize_posts_with_llm(posts):
     """
-    投稿リストを要約し、道具リストも抽出します。
+    投稿リストを要約し、道具リストも抽出します（LLMモデルを利用）。
 
     Args:
         posts (list): 投稿データのリスト。
@@ -156,8 +156,8 @@ def summarize_with_gemini(posts):
     client = genai.Client()
     results = []
     for post in posts:
-        summary = summarize_post_with_gemini(client, post)
-        tools = extract_tools_with_gemini(client, post)
+        summary = summarize_post_with_llm(client, post)
+        tools = extract_tools_with_llm(client, post)
         results.append({"title": post["title"], "summary": summary, "tools": tools})
     return results
 
@@ -166,7 +166,7 @@ if __name__ == "__main__":
     import json
 
     posts = fetch_reddit_posts("Ultralight", limit=3, comment_limit=5)
-    summaries = summarize_with_gemini(posts)
+    summaries = summarize_posts_with_llm(posts)
     # Toolはpydanticモデルなのでdict化
     for item in summaries:
         item["tools"] = [
