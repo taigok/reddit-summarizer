@@ -27,6 +27,7 @@ def fetch_reddit_posts(subreddit_name, limit=5, comment_limit=10):
                 "title": submission.title,
                 "selftext": submission.selftext,
                 "comments": comments,
+                "url": f"https://www.reddit.com{submission.permalink}",
             }
         )
     return posts
@@ -43,23 +44,39 @@ RedditのUltralightサブレディットから取得した投稿とコメント�
 コメント: {post['comments']}
 ---
 出力形式:
-要約: ...
+（要約文のみを出力してください。プレフィックスや装飾は不要です）
 """
     response = client.models.generate_content(
         model="gemini-2.0-flash", contents=[prompt]
     )
     return response.text.strip()
 
+
 from pydantic import BaseModel
+from typing import Optional
+
+
+class Tool(BaseModel):
+    brand: Optional[str]
+    name: str
+
 
 class ToolList(BaseModel):
-    tools: list[str]
+    tools: list[Tool]
+
 
 def extract_tools_with_gemini(client, post):
     prompt = f"""
 RedditのUltralightサブレディットから取得した投稿とコメントのデータです。
-この投稿とコメントに登場する「道具・ギア」（例：バックパック、テント、クッカー、ストーブ、水筒、ガイドブック、ソックス、ブランド名や製品名など）をリストアップしてください。
-文章中に具体的な商品名やカテゴリ名がない場合は、空リスト[]を返してください。
+この投稿とコメントに登場する「道具・ギア」をリストアップしてください。
+それぞれ「ブランド名」と「道具名（製品名）」の2つの情報を抽出し、以下のJSON形式で返してください。
+ブランド名が不明な場合はnull、または空文字列でも構いません。
+
+出力例:
+[
+  {{"brand": "Montbell", "name": "U.L.ドームシェルター"}},
+  {{"brand": null, "name": "チタンマグカップ"}}
+]
 
 タイトル: {post['title']}
 本文: {post['selftext']}
@@ -81,6 +98,7 @@ RedditのUltralightサブレディットから取得した投稿とコメント�
         tools = []
     return tools
 
+
 def summarize_with_gemini(posts):
     client = genai.Client()
     results = []
@@ -92,7 +110,14 @@ def summarize_with_gemini(posts):
 
 
 if __name__ == "__main__":
+    import json
+
     posts = fetch_reddit_posts("Ultralight", limit=3, comment_limit=5)
     summaries = summarize_with_gemini(posts)
+    # Toolはpydanticモデルなのでdict化
     for item in summaries:
-        print(f"\n---\nタイトル: {item['title']}\n要約: {item['summary']}\n道具リスト: {item['tools']}\n")
+        item["tools"] = [
+            tool.dict() if hasattr(tool, "dict") else dict(tool)
+            for tool in item["tools"]
+        ]
+    print(json.dumps(summaries, ensure_ascii=False, indent=2))
