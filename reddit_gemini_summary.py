@@ -10,8 +10,18 @@ REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
 REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "reddit-ultralight-summary-script")
 
 
-# --- Redditから投稿とコメント取得 ---
 def fetch_reddit_posts(subreddit_name, limit=5, comment_limit=10):
+    """
+    指定したサブレディットから投稿とコメントを取得します。
+
+    Args:
+        subreddit_name (str): サブレディット名。
+        limit (int): 取得する投稿数。
+        comment_limit (int): 各投稿ごとに取得するコメント数。
+
+    Returns:
+        list: 投稿データのリスト。
+    """
     reddit = praw.Reddit(
         client_id=REDDIT_CLIENT_ID,
         client_secret=REDDIT_CLIENT_SECRET,
@@ -33,8 +43,17 @@ def fetch_reddit_posts(subreddit_name, limit=5, comment_limit=10):
     return posts
 
 
-# --- Geminiで要約・道具リスト生成（要約・道具リストを別リクエスト） ---
 def summarize_post_with_gemini(client, post):
+    """
+    Gemini APIを用いて投稿・コメント全体の要約を生成します。
+
+    Args:
+        client: Gemini APIクライアント。
+        post (dict): 投稿データ。
+
+    Returns:
+        str: 要約文。
+    """
     prompt = f"""
 RedditのUltralightサブレディットから取得した投稿とコメントのデータです。
 この投稿とコメントについて、投稿・コメント全体の要約を300字程度で作成してください。
@@ -57,15 +76,40 @@ from typing import Optional
 
 
 class Tool(BaseModel):
+    """
+    道具・ギアの情報を表すモデル。
+
+    Attributes:
+        brand (Optional[str]): ブランド名。
+        name (str): 道具名（製品名）。
+    """
+
     brand: Optional[str]
     name: str
 
 
 class ToolList(BaseModel):
+    """
+    道具・ギアのリストを表すモデル。
+
+    Attributes:
+        tools (list[Tool]): 道具のリスト。
+    """
+
     tools: list[Tool]
 
 
 def extract_tools_with_gemini(client, post):
+    """
+    Gemini APIを用いて投稿・コメントから道具・ギアを抽出します。
+
+    Args:
+        client: Gemini APIクライアント。
+        post (dict): 投稿データ。
+
+    Returns:
+        list: 道具・ギアのリスト。
+    """
     prompt = f"""
 RedditのUltralightサブレディットから取得した投稿とコメントのデータです。
 この投稿とコメントに登場する「道具・ギア」をリストアップしてください。
@@ -100,6 +144,15 @@ RedditのUltralightサブレディットから取得した投稿とコメント�
 
 
 def summarize_with_gemini(posts):
+    """
+    投稿リストを要約し、道具リストも抽出します。
+
+    Args:
+        posts (list): 投稿データのリスト。
+
+    Returns:
+        list: 各投稿のタイトル、要約、道具リストを含むリスト。
+    """
     client = genai.Client()
     results = []
     for post in posts:
