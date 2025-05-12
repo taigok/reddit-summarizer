@@ -45,6 +45,7 @@ def fetch_reddit_posts(subreddit_name, limit=5, comment_limit=10):
         comments = [comment.body for comment in submission.comments[:comment_limit]]
         post_list.append(
             {
+                "id": submission.id,
                 "title": submission.title,
                 "selftext": submission.selftext,
                 "comments": comments,
@@ -232,12 +233,15 @@ RedditのUltralightサブレディットから取得した投稿とコメント�
     return tools
 
 
-def summarize_posts_with_llm(posts):
+def summarize_posts_with_llm(posts, max_retries=3, base_wait=60):
     """
     投稿リストを要約し、道具リストも抽出します（LLMモデルを利用）。
+    エラー時は指数バックオフでリトライし、失敗した投稿はスキップします。
 
     Args:
         posts (list): 投稿データのリスト。
+        max_retries (int): リトライ最大回数。
+        base_wait (int): リトライ間隔の基準（秒）。
 
     Returns:
         list: 各投稿のタイトル、要約、道具リストを含むリスト。
@@ -246,15 +250,101 @@ def summarize_posts_with_llm(posts):
     client = genai.Client()
     results = []
     for post in posts:
-        summary = summarize_post_with_llm(client, post)
-        tools = extract_tools_with_llm(client, post)
-        results.append({"title": post["title"], "summary": summary, "tools": tools})
-    logger.info("All posts summarized.")
+        for attempt in range(1, max_retries + 1):
+            try:
+                summary = summarize_post_with_llm(client, post)
+                tools = extract_tools_with_llm(client, post)
+                results.append(
+                    {
+                        "id": post["id"],
+                        "title": post["title"],
+                        "summary": summary,
+                        "tools": tools,
+                    }
+                )
+                break  # 成功したらループを抜ける
+            except Exception as e:
+                logger.warning(
+                    f"Error on post '{post['title']}' (attempt {attempt}/{max_retries}): {e}"
+                )
+                if attempt < max_retries:
+                    wait_time = base_wait * (2 ** (attempt - 1))  # 60, 120, 240...
+                    logger.info(f"Retrying after {wait_time} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    # 最終的に失敗した場合はエラー内容を記録してスキップ
+                    results.append(
+                        {
+                            "id": post["id"],
+                            "title": post["title"],
+                            "summary": f"[ERROR] {e}",
+                            "tools": [],
+                        }
+                    )
+    logger.info("All posts summarized (with retry/skip & backoff).")
     return results
 
 
+import sqlite3
+import os
+import time
+
+
+def init_db(db_path="data/summary.db"):
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS summaries (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            summary TEXT
+        )
+    """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tools (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            summary_id TEXT,
+            brand TEXT,
+            name TEXT,
+            type TEXT,
+            FOREIGN KEY(summary_id) REFERENCES summaries(id)
+        )
+    """
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_summaries_and_tools_to_db(summaries, db_path="data/summary.db"):
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    for item in summaries:
+        # summariesテーブルにINSERT（重複は無視）
+        c.execute(
+            "INSERT OR IGNORE INTO summaries (id, title, summary) VALUES (?, ?, ?)",
+            (item["id"], item["title"], item["summary"]),
+        )
+        # toolsテーブルに道具を追加（同じsummary_id, name, brand, typeの重複を防ぐ）
+        for tool in item["tools"]:
+            c.execute(
+                "SELECT COUNT(*) FROM tools WHERE summary_id=? AND name=? AND brand=? AND type=?",
+                (item["id"], tool.get("name"), tool.get("brand"), tool.get("type")),
+            )
+            if c.fetchone()[0] == 0:
+                c.execute(
+                    "INSERT INTO tools (summary_id, brand, name, type) VALUES (?, ?, ?, ?)",
+                    (item["id"], tool.get("brand"), tool.get("name"), tool.get("type")),
+                )
+    conn.commit()
+    conn.close()
+
+
 if __name__ == "__main__":
-    import json
+    os.makedirs("data", exist_ok=True)
+    init_db()
 
     posts = fetch_reddit_posts("Ultralight", limit=2, comment_limit=5)
     summaries = summarize_posts_with_llm(posts)
@@ -266,6 +356,6 @@ if __name__ == "__main__":
                 d["type"] = d["type"].value
             tools_list.append(d)
         item["tools"] = tools_list
-    logger.info(
-        "Summary output: %s", json.dumps(summaries, ensure_ascii=False, indent=2)
-    )
+
+    save_summaries_and_tools_to_db(summaries)
+    logger.info("DB保存が完了しました")
