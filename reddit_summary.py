@@ -254,14 +254,15 @@ def summarize_posts_with_llm(posts, max_retries=3, base_wait=60):
             try:
                 summary = summarize_post_with_llm(client, post)
                 tools = extract_tools_with_llm(client, post)
-                results.append(
-                    {
-                        "id": post["id"],
-                        "title": post["title"],
-                        "summary": summary,
-                        "tools": tools,
-                    }
-                )
+                result = {
+                    "id": post["id"],
+                    "title": post["title"],
+                    "summary": summary,
+                    "tools": tools,
+                    "url": post.get("url"),
+                }
+                save_summaries_and_tools_to_db(result)
+                results.append(result)
                 break  # 成功したらループを抜ける
             except Exception as e:
                 logger.warning(
@@ -279,6 +280,7 @@ def summarize_posts_with_llm(posts, max_retries=3, base_wait=60):
                             "title": post["title"],
                             "summary": f"[ERROR] {e}",
                             "tools": [],
+                            "url": post.get("url"),
                         }
                     )
     logger.info("All posts summarized (with retry/skip & backoff).")
@@ -298,7 +300,8 @@ def init_db(db_path="data/summary.db"):
         CREATE TABLE IF NOT EXISTS summaries (
             id TEXT PRIMARY KEY,
             title TEXT,
-            summary TEXT
+            summary TEXT,
+            url TEXT
         )
     """
     )
@@ -310,7 +313,8 @@ def init_db(db_path="data/summary.db"):
             brand TEXT,
             name TEXT,
             type TEXT,
-            FOREIGN KEY(summary_id) REFERENCES summaries(id)
+            FOREIGN KEY(summary_id) REFERENCES summaries(id),
+            UNIQUE(summary_id, name, brand, type)
         )
     """
     )
@@ -319,16 +323,25 @@ def init_db(db_path="data/summary.db"):
 
 
 def save_summaries_and_tools_to_db(summaries, db_path="data/summary.db"):
+    # 単一投稿(dict)にも対応
+    if isinstance(summaries, dict):
+        summaries = [summaries]
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
     for item in summaries:
-        # summariesテーブルにINSERT（重複は無視）
         c.execute(
-            "INSERT OR IGNORE INTO summaries (id, title, summary) VALUES (?, ?, ?)",
-            (item["id"], item["title"], item["summary"]),
+            "INSERT OR IGNORE INTO summaries (id, title, summary, url) VALUES (?, ?, ?, ?)",
+            (item["id"], item["title"], item["summary"], item.get("url")),
         )
-        # toolsテーブルに道具を追加（同じsummary_id, name, brand, typeの重複を防ぐ）
         for tool in item["tools"]:
+            if not isinstance(tool, dict):
+                if hasattr(tool, "model_dump"):
+                    tool = tool.model_dump()
+                else:
+                    tool = dict(tool)
+            # ProductType型は文字列に変換
+            if isinstance(tool.get("type"), ProductType):
+                tool["type"] = tool["type"].value
             c.execute(
                 "SELECT COUNT(*) FROM tools WHERE summary_id=? AND name=? AND brand=? AND type=?",
                 (item["id"], tool.get("name"), tool.get("brand"), tool.get("type")),
